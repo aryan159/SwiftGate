@@ -8,7 +8,7 @@ The project is an API Gateway powered by [CloudWeGo](https://github.com/cloudweg
 
 Make sure to have GO installed on your device. Please follow the instructions [here](https://go.dev/doc/install) to install GO.
 
-This program contains indirect calls to [NetPoll](https://github.com/cloudwego/netpoll) which is not compatuble with Windows, to ensure the program can run, it is recommended to use Linux or MacOS. Windows users can explore [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). 
+This program contains indirect calls to [NetPoll](https://github.com/cloudwego/netpoll) which is not compatible with Windows, to ensure the program can run, it is recommended to use Linux or MacOS. Windows users can explore [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). 
 
 Set up GOPATH correctly if you are having issues with modules please enable GO111MODULE with the command below
 
