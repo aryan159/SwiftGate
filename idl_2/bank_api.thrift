@@ -1,7 +1,7 @@
 namespace go api
 
 struct BankNameReq {
-    1: string Name (api.query="name")
+    1: string Name
 }
 
 struct BankNameResp {

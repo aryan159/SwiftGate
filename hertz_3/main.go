@@ -40,7 +40,7 @@ func main() {
 		// 'ExampleMethod' method name must be passed as param
 		fmt.Println("[Req String]")
 		fmt.Println(string(ctx.Request.BodyBytes()))
-		resp, err := cli.GenericCall(c, "GetNameMethod", "{\"name\": \"hello\"}")
+		resp, err := cli.GenericCall(c, "GetNameMethod", string(ctx.Request.BodyBytes()))
 		if err != nil {
 			panic(err)
 		}

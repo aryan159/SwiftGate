@@ -14,7 +14,6 @@ func (s *BankServiceImpl) GetNameMethod(ctx context.Context, request *api.BankNa
 	// TODO: Your code here...
 
 	fmt.Println("[Kitex] Request Received")
-	fmt.Println(request.Name)
 
 	resp = &api.BankNameResp{RespBody: request.Name + "BANK"}
 
