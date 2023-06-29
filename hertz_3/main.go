@@ -14,6 +14,9 @@ import (
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/generic"
+	"github.com/cloudwego/kitex/pkg/retry"
+	"github.com/cloudwego/kitex/pkg/circuitbreak"
+	"github.com/cloudwego/kitex/pkg/rpcinfo"
 )
 
 func main() {
@@ -33,13 +36,31 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		cli, err := genericclient.NewClient("BankService", g, client.WithHostPorts("0.0.0.0:8888"))
+
+		var opts []client.Option
+
+		opts = append(opts, client.WithHostPorts("0.0.0.0:8888"))
+
+		//Retry
+		fp := retry.NewFailurePolicy()
+		fp.WithMaxRetryTimes(3)
+
+		opts = append(opts, client.WithFailureRetry(fp))
+
+		//Circuit Breaker
+		cbs := circuitbreak.NewCBSuite(GenServiceCBKeyFunc)
+
+		opts = append(opts, client.WithCircuitBreaker(cbs))
+
+		cli, err := genericclient.NewClient("BankService", g, opts...)
 		if err != nil {
 			panic(err)
 		}
 		// 'ExampleMethod' method name must be passed as param
 		fmt.Println("[Req String]")
 		fmt.Println(string(ctx.Request.BodyBytes()))
+
+
 		resp, err := cli.GenericCall(c, "GetNameMethod", string(ctx.Request.BodyBytes()))
 		if err != nil {
 			panic(err)
@@ -69,4 +90,9 @@ func main() {
 	})
 
 	h.Spin()
+}
+
+func GenServiceCBKeyFunc(ri rpcinfo.RPCInfo) string {
+	// circuitbreak.RPCInfo2Key returns "$fromServiceName/$toServiceName/$method"
+	return circuitbreak.RPCInfo2Key(ri)
 }
