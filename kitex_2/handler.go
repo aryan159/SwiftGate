@@ -13,12 +13,10 @@ type BankServiceImpl struct{}
 func (s *BankServiceImpl) GetNameMethod(ctx context.Context, request *api.BankNameReq) (resp *api.BankNameResp, err error) {
 	// TODO: Your code here...
 
-
 	fmt.Println("[Kitex] Request Received")
 	fmt.Println(request.Name)
 
 	resp = &api.BankNameResp{RespBody: request.Name + "BANK"}
-
 
 	return resp, nil
 }

@@ -38,13 +38,15 @@ func main() {
 			panic(err)
 		}
 		// 'ExampleMethod' method name must be passed as param
-		resp, err := cli.GenericCall(c, "GetNameMethod", "{\"name\": \"random\"}")
+		fmt.Println("[Req String]")
+		fmt.Println(string(ctx.Request.BodyBytes()))
+		resp, err := cli.GenericCall(c, "GetNameMethod", "{\"name\": \"hello\"}")
 		if err != nil {
 			panic(err)
 		}
 		// resp is a JSON string
 
-		ctx.JSON(consts.StatusOK, utils.H{"name": resp})
+		ctx.JSON(consts.StatusOK, resp)
 	})
 
 	h.GET("/ping", func(c context.Context, ctx *app.RequestContext) {
