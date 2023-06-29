@@ -9,6 +9,5 @@ struct BankNameResp {
 }
 
 service BankService {
-    HelloResp HelloMethod(1: HelloReq request) (api.get="/HelloService/HelloMethod")
-    EchoResp echo(1: EchoReq request) (api.get="/HelloService/echo")
+    BankNameResp GetNameMethod(1: BankNameReq request) (api.get="/bank/name")
 }
