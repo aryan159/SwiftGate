@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bank/kitex_gen/api"
 	"context"
 	"fmt"
-	"bank/kitex_gen/api"
+	"time"
+
 	//"kitex/kitex_gen/api/bankservice"
 	"bank/kitex_gen/api/bank"
 	"log"
-	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -17,15 +18,15 @@ import (
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/circuitbreak"
 	"github.com/cloudwego/kitex/pkg/generic"
-	"github.com/cloudwego/kitex/pkg/retry"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
-
 
 	etcd "github.com/kitex-contrib/registry-etcd"
 )
 
 func main() {
-	h := server.New(server.WithHostPorts("127.0.0.1:8887"))
+	NUM_OF_RETRIES := 5
+
+	h := server.New(server.WithHostPorts("127.0.0.1:8887"), server.WithExitWaitTime(time.Second))
 
 	r, err := etcd.NewEtcdResolver([]string{"127.0.0.1:2379"})
 	if err != nil {
@@ -57,32 +58,18 @@ func main() {
 
 		var opts []client.Option
 
-		//opts = append(opts, client.WithHostPorts("0.0.0.0:8888"))
-
-
 		opts = append(opts, client.WithResolver(r))
-
-		// Retry
-		fp := retry.NewFailurePolicy()
-		fp.WithMaxRetryTimes(3)
-
-		opts = append(opts, client.WithFailureRetry(fp))
 
 		// Circuit Breaker
 		cbs := circuitbreak.NewCBSuite(GenServiceCBKeyFunc)
-
 		opts = append(opts, client.WithCircuitBreaker(cbs))
 
-
-
-		fmt.Println(strings.Title(service))
-
-		cli, err := genericclient.NewClient(strings.Title(service), g, opts...)
+		cli, err := genericclient.NewClient(service, g, opts...)
 		if err != nil {
 			panic(err)
 		}
 
-		resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
+		resp, err := RpcCallWithRetry(NUM_OF_RETRIES, cli, c, method, ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -99,7 +86,6 @@ func main() {
 		fmt.Println("[Hertz] API Request Received")
 		fmt.Println("[Hertz] Making RPC Call")
 
-		
 		client, err := bank.NewClient("BankService", client.WithResolver(r))
 
 		// RPC client
@@ -123,4 +109,16 @@ func main() {
 func GenServiceCBKeyFunc(ri rpcinfo.RPCInfo) string {
 	// circuitbreak.RPCInfo2Key returns "$fromServiceName/$toServiceName/$method"
 	return circuitbreak.RPCInfo2Key(ri)
+}
+
+func RpcCallWithRetry(retriesLeft int, cli genericclient.Client, c context.Context, method string, ctx *app.RequestContext) (interface{}, error) {
+	resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
+	if err != nil {
+		if retriesLeft <= 1 {
+			return nil, err
+		}
+		fmt.Printf("[Hertz] Retries Left: %v\n", retriesLeft)
+		return RpcCallWithRetry(retriesLeft-1, cli, c, method, ctx)
+	}
+	return resp, nil
 }
