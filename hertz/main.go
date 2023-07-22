@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"kitex/kitex_gen/api"
-	"kitex/kitex_gen/api/bankservice"
+	"bank/kitex_gen/api"
+	//"kitex/kitex_gen/api/bankservice"
+	"bank/kitex_gen/api/bank"
 	"log"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -30,14 +32,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	h.GET("/bank/name", func(c context.Context, ctx *app.RequestContext) {
+	h.GET("/:service/:method", func(c context.Context, ctx *app.RequestContext) {
 		fmt.Println("[Hertz] API Request Received")
 		fmt.Print("[Hertz] Request: ")
 		fmt.Println(string(ctx.Request.Body()))
 		fmt.Println("[Hertz] Making RPC Call")
 
+		service := ctx.Param("service")
+		method := ctx.Param("method")
+
+		fmt.Println(service)
+		fmt.Println(method)
+
 		// Parse IDL with Local Files
-		p, err := generic.NewThriftFileProvider("../idl/bank_api.thrift")
+		p, err := generic.NewThriftFileProvider("../idl/" + service + ".thrift")
 		if err != nil {
 			panic(err)
 		}
@@ -65,12 +73,16 @@ func main() {
 
 		opts = append(opts, client.WithCircuitBreaker(cbs))
 
-		cli, err := genericclient.NewClient("BankService", g, opts...)
+
+
+		fmt.Println(strings.Title(service))
+
+		cli, err := genericclient.NewClient(strings.Title(service), g, opts...)
 		if err != nil {
 			panic(err)
 		}
 
-		resp, err := cli.GenericCall(c, "GetNameMethod", string(ctx.Request.BodyBytes()))
+		resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
 		if err != nil {
 			panic(err)
 		}
@@ -88,18 +100,16 @@ func main() {
 		fmt.Println("[Hertz] Making RPC Call")
 
 		
-		client, err := bankservice.NewClient("BankService", client.WithResolver(r))
+		client, err := bank.NewClient("BankService", client.WithResolver(r))
 
 		// RPC client
-
-		
 		//client, err := bankservice.NewClient("BankService", client.WithHostPorts("0.0.0.0:8888"))
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		req := &api.BankNameReq{Name: "my request"}
-		resp, err := client.GetNameMethod(context.Background(), req)
+		resp, err := client.Name(context.Background(), req)
 		if err != nil {
 			log.Fatal(err)
 		}
