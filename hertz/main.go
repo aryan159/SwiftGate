@@ -25,6 +25,11 @@ import (
 func main() {
 	h := server.New(server.WithHostPorts("127.0.0.1:8887"))
 
+	r, err := etcd.NewEtcdResolver([]string{"127.0.0.1:2379"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	h.GET("/bank/name", func(c context.Context, ctx *app.RequestContext) {
 		fmt.Println("[Hertz] API Request Received")
 		fmt.Print("[Hertz] Request: ")
@@ -44,7 +49,10 @@ func main() {
 
 		var opts []client.Option
 
-		opts = append(opts, client.WithHostPorts("0.0.0.0:8888"))
+		//opts = append(opts, client.WithHostPorts("0.0.0.0:8888"))
+
+
+		opts = append(opts, client.WithResolver(r))
 
 		// Retry
 		fp := retry.NewFailurePolicy()
@@ -79,10 +87,7 @@ func main() {
 		fmt.Println("[Hertz] API Request Received")
 		fmt.Println("[Hertz] Making RPC Call")
 
-		r, err := etcd.NewEtcdResolver([]string{"127.0.0.1:2379"})
-		if err != nil {
-			log.Fatal(err)
-		}
+		
 		client, err := bankservice.NewClient("BankService", client.WithResolver(r))
 
 		// RPC client
