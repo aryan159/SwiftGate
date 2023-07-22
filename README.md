@@ -16,6 +16,8 @@ Set up GOPATH correctly if you are having issues with modules please enable GO11
 go env -w GO111MODULE=on
 ```
 
+Our API Gateway uses etcd as a service registery, for setup and install of the etcd service, please follow the guide [here](https://github.com/etcd-io/etcd/releases)
+
 ## Setup
 
 In the SwiftGate/kitex folder, run these 2 commands to start the rpc server
