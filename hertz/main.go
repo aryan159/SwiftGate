@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"bank/kitex_gen/api"
-	//"kitex/kitex_gen/api/bankservice"
 	"bank/kitex_gen/api/bank"
 	"log"
-	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -22,6 +20,13 @@ import (
 
 
 	etcd "github.com/kitex-contrib/registry-etcd"
+
+	
+	"time"
+	"github.com/go-redis/redis/v8"
+	"github.com/hertz-contrib/cache"
+	"github.com/hertz-contrib/cache/persist"
+
 )
 
 func main() {
@@ -32,6 +37,29 @@ func main() {
 		log.Fatal(err)
 	}
 
+	redisStore := persist.NewRedisStore(redis.NewClient(&redis.Options{
+        Network: "tcp",
+        Addr:    "127.0.0.1:6379",
+    }))
+
+
+
+	h.Use(cache.NewCache(
+        redisStore,
+        60*time.Second,
+        cache.WithCacheStrategyByRequest(func(ctx context.Context, c *app.RequestContext) (bool, cache.Strategy) {
+            return true, cache.Strategy{
+                CacheKey: c.Request.URI().String() + string(c.Request.Body()),
+            }
+        }),
+        cache.WithOnHitCache(func(c context.Context, ctx *app.RequestContext) {
+            resp := &cache.ResponseCache{}
+            redisStore.Get(c, ctx.Request.URI().String() + string(ctx.Request.Body()) , &resp)
+            fmt.Println("header = " + string(resp.Header.Get("head")))
+            fmt.Println("data = " + string(resp.Data))
+        }),
+    ))
+
 	h.GET("/:service/:method", func(c context.Context, ctx *app.RequestContext) {
 		fmt.Println("[Hertz] API Request Received")
 		fmt.Print("[Hertz] Request: ")
@@ -41,8 +69,6 @@ func main() {
 		service := ctx.Param("service")
 		method := ctx.Param("method")
 
-		fmt.Println(service)
-		fmt.Println(method)
 
 		// Parse IDL with Local Files
 		p, err := generic.NewThriftFileProvider("../idl/" + service + ".thrift")
@@ -56,8 +82,6 @@ func main() {
 		}
 
 		var opts []client.Option
-
-		//opts = append(opts, client.WithHostPorts("0.0.0.0:8888"))
 
 
 		opts = append(opts, client.WithResolver(r))
@@ -74,10 +98,7 @@ func main() {
 		opts = append(opts, client.WithCircuitBreaker(cbs))
 
 
-
-		fmt.Println(strings.Title(service))
-
-		cli, err := genericclient.NewClient(strings.Title(service), g, opts...)
+		cli, err := genericclient.NewClient(service, g, opts...)
 		if err != nil {
 			panic(err)
 		}
