@@ -20,7 +20,7 @@ func (s *BankImpl) Name(ctx context.Context, request *api.BankNameReq) (resp *ap
 
 	// Randomly Error out
 	r := rand.Intn(100)
-	if r < 50 {
+	if r < 75 {
 		fmt.Println("[Kitex] Random error triggered!")
 		return nil, errors.New("50% Error")
 	}
