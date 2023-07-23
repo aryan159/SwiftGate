@@ -18,6 +18,10 @@ go env -w GO111MODULE=on
 
 Our API Gateway uses etcd as a service registery, for setup and install of the etcd service, please follow the guide [here](https://github.com/etcd-io/etcd/releases)
 
+
+To set up redis for caching, follow [this](https://redis.io/docs/getting-started/installation/) guide to install.
+
+
 ## Setup
 
 In the SwiftGate/kitex folder, run these 2 commands to start the rpc server
