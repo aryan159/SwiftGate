@@ -1,0 +1,16 @@
+{
+    "bank": {
+        "name" : {
+            "cache": {
+                "enableCache" : true,
+                "withHeader" : false,
+                "withBody" : true,
+                "withURI" : true
+            },
+            "auth": {
+                "enableAuth" : true,
+                "token" : "token"
+            }
+        }
+    }
+}

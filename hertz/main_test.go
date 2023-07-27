@@ -1,10 +1,10 @@
 package main
 
 import (
+	api "bank/kitex_gen/api"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	api "kitex/kitex_gen/api"
 	"net/http"
 	"strings"
 	"testing"
