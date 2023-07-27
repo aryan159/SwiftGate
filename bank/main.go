@@ -3,12 +3,18 @@ package main
 import (
 	api "bank/kitex_gen/api/bank"
 	"fmt"
+
+	"io"
+
 	"log"
 
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/cloudwego/kitex/server"
 	etcd "github.com/kitex-contrib/registry-etcd"
-
+	internal_opentracing "github.com/kitex-contrib/tracer-opentracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go"
+	jaegercfg "github.com/uber/jaeger-client-go/config"
 	"io/ioutil"
 	"os"
 
@@ -20,6 +26,12 @@ import (
 )
 
 func main() {
+
+	var opts []server.Option
+
+	tracerSuite, closer := InitJaeger("kitex-server")
+	defer closer.Close()
+	opts = append(opts, server.WithSuite(tracerSuite))
 
 	serviceName := "bank"
 
@@ -60,9 +72,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	svr := api.NewServer(new(BankImpl), server.WithRegistry(r), server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: serviceName}))
+	opts = append(opts, server.WithRegistry(r))
+
+	opts = append(opts, server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: serviceName}))
+
+	svr := api.NewServer(new(BankImpl), opts...)
 
 	err = svr.Run()
+
+	RemoveServiceFromRedis(serviceName)
 
 	RemoveServiceFromRedis(serviceName)
 
@@ -115,4 +133,15 @@ func RemoveServiceFromRedis(service string) {
 		}
 	}
 
+}
+
+func InitJaeger(service string) (server.Suite, io.Closer) {
+	cfg, _ := jaegercfg.FromEnv()
+	cfg.ServiceName = service
+	tracer, closer, err := cfg.NewTracer(jaegercfg.Logger(jaeger.StdLogger))
+	if err != nil {
+		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
+	}
+	opentracing.InitGlobalTracer(tracer)
+	return internal_opentracing.NewDefaultServerSuite(), closer
 }
