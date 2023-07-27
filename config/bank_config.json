@@ -2,14 +2,18 @@
     "bank": {
         "name" : {
             "cache": {
-                "enableCache" : false,
+                "enableCache" : true,
                 "withHeader" : false,
                 "withBody" : true,
                 "withURI" : true
             },
             "auth": {
-                "enableAuth" : true,
+                "enableAuth" : false,
                 "token" : "token"
+            },
+            "retry": {
+                "enableRetry" : true,
+                "maxTimes": 3
             }
         }
     }

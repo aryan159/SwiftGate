@@ -8,13 +8,19 @@ import (
 
 	"log"
 
+	"github.com/cloudwego/kitex/pkg/klog"
+	"github.com/cloudwego/kitex/pkg/limit"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/cloudwego/kitex/server"
+	"github.com/hertz-contrib/obs-opentelemetry/provider"
+	kitexlogrus "github.com/kitex-contrib/obs-opentelemetry/logging/logrus"
+	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
 	internal_opentracing "github.com/kitex-contrib/tracer-opentracing"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
+
 	"io/ioutil"
 	"os"
 
@@ -27,11 +33,22 @@ import (
 
 func main() {
 
+	klog.SetLogger(kitexlogrus.NewLogger())
+	klog.SetLevel(klog.LevelDebug)
+
+	p := provider.NewOpenTelemetryProvider(
+		provider.WithServiceName("Bank-Service"),
+		provider.WithExportEndpoint("localhost:4317"),
+		provider.WithInsecure(),
+	)
+	defer p.Shutdown(context.Background())
+
 	var opts []server.Option
 
-	tracerSuite, closer := InitJaeger("kitex-server")
-	defer closer.Close()
-	opts = append(opts, server.WithSuite(tracerSuite))
+	opts = append(opts, server.WithSuite(tracing.NewServerSuite()))
+
+	// Rate limiting
+	opts = append(opts, server.WithLimit(&limit.Option{MaxConnections: 1000, MaxQPS: 125}))
 
 	serviceName := "bank"
 
@@ -47,6 +64,9 @@ func main() {
 		ctx := context.Background()
 
 		val, err := client.Get(ctx, "allservices").Result()
+		if err != nil {
+			panic(err)
+		}
 
 		if !strings.Contains(val, serviceName) {
 			val += serviceName + ";"

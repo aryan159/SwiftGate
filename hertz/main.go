@@ -2,55 +2,62 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
-
-	//"kitex/kitex_gen/api/bankservice"
-
 	"log"
+	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/circuitbreak"
 	"github.com/cloudwego/kitex/pkg/generic"
-	"github.com/cloudwego/kitex/pkg/retry"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
-	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go"
-
-	hertztracer "github.com/hertz-contrib/tracer/hertz"
-	jaegercfg "github.com/uber/jaeger-client-go/config"
-
-	etcd "github.com/kitex-contrib/registry-etcd"
-
-	"time"
-
 	"github.com/go-redis/redis/v8"
 	"github.com/hertz-contrib/cache"
 	"github.com/hertz-contrib/cache/persist"
-
-	"encoding/json"
-
 	"github.com/hertz-contrib/keyauth"
+	hertzlogrus "github.com/hertz-contrib/obs-opentelemetry/logging/logrus"
+	"github.com/hertz-contrib/obs-opentelemetry/provider"
+	hertztracing "github.com/hertz-contrib/obs-opentelemetry/tracing"
+	kitextracing "github.com/kitex-contrib/obs-opentelemetry/tracing"
+
+	etcd "github.com/kitex-contrib/registry-etcd"
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go"
+	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
 var servicesConfig map[string]map[string]Config
 
 func main() {
-	NUM_OF_RETRIES := 5
+	hlog.SetLogger(hertzlogrus.NewLogger())
+	hlog.SetLevel(hlog.LevelDebug)
 
-	hertzTracer, hertzTracerCloser := InitTracer("hertz-server")
-	defer hertzTracerCloser.Close()
+	hlog.Debug("Hertz::main\n")
 
-	h := server.New(server.WithHostPorts("127.0.0.1:8887"), server.WithExitWaitTime(time.Second),
-		server.WithTracer(hertztracer.NewTracer(hertzTracer, func(c *app.RequestContext) string {
-			return "test.hertz.server" + "::" + c.FullPath()
-		})))
+	p := provider.NewOpenTelemetryProvider(
+		provider.WithServiceName("Hertz-Server"),
+		// Support setting ExportEndpoint via environment variables: OTEL_EXPORTER_OTLP_ENDPOINT
+		provider.WithExportEndpoint("localhost:4317"),
+		provider.WithInsecure(),
+	)
+	defer p.Shutdown(context.Background())
+
+	tracer, cfg := hertztracing.NewServerTracer()
+
+	h := server.New(
+		server.WithHostPorts("127.0.0.1:8887"),
+		server.WithExitWaitTime(time.Second),
+		tracer)
+
+	h.Use(hertztracing.ServerMiddleware(cfg))
 
 	r, err := etcd.NewEtcdResolver([]string{"127.0.0.1:2379"})
 	if err != nil {
@@ -66,8 +73,6 @@ func main() {
 	go startRedisSubscription()
 
 	v1 := h.Group("/:service/:method")
-
-	v1.Use(hertztracer.ServerCtx())
 
 	v1.Use(keyauth.New(
 		keyauth.WithFilter(func(c context.Context, ctx *app.RequestContext) bool {
@@ -127,26 +132,25 @@ func main() {
 		// Parse IDL with Local Files
 		p, err := generic.NewThriftFileProvider("../idl/" + service + ".thrift")
 		if err != nil {
-			panic(err)
+			fmt.Print(err.Error())
+			ctx.SetStatusCode(consts.StatusServiceUnavailable)
+			return
 		}
 
 		g, err := generic.JSONThriftGeneric(p)
 		if err != nil {
-			panic(err)
+			fmt.Print(err.Error())
+			ctx.SetStatusCode(consts.StatusServiceUnavailable)
+			return
 		}
 
 		var opts []client.Option
 
+		// tracer
+		opts = append(opts, client.WithSuite(kitextracing.NewClientSuite()))
+
+		// etcd
 		opts = append(opts, client.WithResolver(r))
-
-		// Retry
-
-		if servicesConfig[service][method].Retry.EnableRetry {
-			fp := retry.NewFailurePolicy()
-			fp.WithMaxRetryTimes(servicesConfig[service][method].Retry.MaxTimes)
-
-			opts = append(opts, client.WithFailureRetry(fp))
-		}
 
 		// Circuit Breaker
 		if servicesConfig[service][method].CircuitBreaker.EnableCircuitBreaker {
@@ -156,14 +160,29 @@ func main() {
 
 		cli, err := genericclient.NewClient(service, g, opts...)
 		if err != nil {
-			panic(err)
+			fmt.Print(err.Error())
+			ctx.SetStatusCode(consts.StatusServiceUnavailable)
+			return
 		}
 
 		fmt.Println("[Hertz] Making RPC Call")
 
-		resp, err := RpcCallWithRetry(NUM_OF_RETRIES, cli, c, method, ctx)
+		numOfTries := 1
+		if servicesConfig[service][method].Retry.EnableRetry {
+			numOfTries = servicesConfig[service][method].Retry.MaxTimes
+		}
+
+		// fmt.Printf("[Enable Retry] %v", servicesConfig[service][method].Retry.EnableRetry)
+		// fmt.Printf("[MaxTimes] %v", servicesConfig[service][method].Retry.MaxTimes)
+		resp, err := RpcCallWithRetry(numOfTries, cli, c, method, ctx)
 		if err != nil {
-			panic(err)
+			fmt.Printf("[RPC Error] %v", err.Error())
+			if strings.Contains(err.Error(), "dependency error") {
+				ctx.SetStatusCode(consts.StatusFailedDependency)
+			} else {
+				ctx.SetStatusCode(consts.StatusTooManyRequests)
+			}
+			return
 		}
 
 		fmt.Println("[Hertz] Response received")
@@ -194,8 +213,8 @@ func LoadAllServices() {
 		DB:       0,
 	})
 
-	ctx := context.Background()
-	val, err := client.Get(ctx, "allservices").Result()
+	ctx2 := context.Background()
+	val, err := client.Get(ctx2, "allservices").Result()
 	if err != nil {
 		panic(err)
 	}
@@ -282,6 +301,7 @@ func InitTracer(serviceName string) (opentracing.Tracer, io.Closer) {
 	// opentracing.InitGlobalTracer(tracer)
 	return tracer, closer
 }
+
 func RpcCallWithRetry(retriesLeft int, cli genericclient.Client, c context.Context, method string, ctx *app.RequestContext) (interface{}, error) {
 	resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
 	if err != nil {
