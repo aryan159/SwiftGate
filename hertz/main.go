@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"log"
 
@@ -21,8 +20,6 @@ import (
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
-
-	etcd "github.com/kitex-contrib/registry-etcd"
 
 	"time"
 
