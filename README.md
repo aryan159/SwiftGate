@@ -4,6 +4,8 @@
 
 The project is an API Gateway powered by [CloudWeGo](https://github.com/cloudwego). It consists of 2 part, the [Hertz](https://github.com/cloudwego/hertz) server that handles incoming HTTP requests and forwards it to the [Kitex](https://github.com/cloudwego/kitex) server that handles the RPC services.
 
+This gateway is focused on extendability and availability, as such the hertz server is self sufficient and do not need to be restarted when services are added on.
+
 ## Technologies
 
 Make sure to have GO installed on your device. Please follow the instructions [here](https://go.dev/doc/install) to install GO.
@@ -19,12 +21,24 @@ go env -w GO111MODULE=on
 Our API Gateway uses etcd as a service registery, for setup and install of the etcd service, please follow the guide [here](https://github.com/etcd-io/etcd/releases)
 
 
-To set up redis for caching, follow [this](https://redis.io/docs/getting-started/installation/) guide to install.
+To set up Redis for caching, follow [this](https://redis.io/docs/getting-started/installation/) guide to install.
+
+Please download and install [Docker](https://docs.docker.com/desktop/) too. 
 
 
 ## Setup
 
-1. Download and Install Docker
+1. Start the etcd and redis server using the following commands:
+
+```
+etcd
+```
+
+```
+redis-server
+````
+
+
 2. Run these scripts
 
 ```
@@ -48,3 +62,5 @@ Access the bank name service with `http://127.0.0.1:8887/bank/name` with the bod
 ```
 
 Then, you can monitor the generated traces at http://localhost:16686
+
+You can enable the cache, auth etc by editing the json file in the config folder, then restart the bank_service to apply the changes.
