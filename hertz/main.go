@@ -3,19 +3,22 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"time"
+
+
 	"log"
-	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
-	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/circuitbreak"
 	"github.com/cloudwego/kitex/pkg/generic"
-	"github.com/cloudwego/kitex/pkg/retry"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go"
 
 	etcd "github.com/kitex-contrib/registry-etcd"
 
@@ -28,13 +31,23 @@ import (
 	"encoding/json"
 
 	"github.com/hertz-contrib/keyauth"
+	hertztracer "github.com/hertz-contrib/tracer/hertz"
+	etcd "github.com/kitex-contrib/registry-etcd"
+	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
 var servicesConfig map[string]map[string]Config
 
 func main() {
+	NUM_OF_RETRIES := 5
 
-	h := server.New(server.WithHostPorts("127.0.0.1:8887"))
+	hertzTracer, hertzTracerCloser := InitTracer("hertz-server")
+	defer hertzTracerCloser.Close()
+
+	h := server.New(server.WithHostPorts("127.0.0.1:8887"), server.WithExitWaitTime(time.Second),
+		server.WithTracer(hertztracer.NewTracer(hertzTracer, func(c *app.RequestContext) string {
+			return "test.hertz.server" + "::" + c.FullPath()
+		})))
 
 	r, err := etcd.NewEtcdResolver([]string{"127.0.0.1:2379"})
 	if err != nil {
@@ -89,6 +102,8 @@ func main() {
 		}),
 	))
 
+	v1.Use(hertztracer.ServerCtx())
+
 	v1.GET("/.", func(c context.Context, ctx *app.RequestContext) {
 		fmt.Println("[Hertz] API Request Received")
 		fmt.Print("[Hertz] Request: ")
@@ -105,6 +120,7 @@ func main() {
 				return
 			}
 		}
+		fmt.Printf("Service: %v, Method, %v\n", service, method)
 
 		// Parse IDL with Local Files
 		p, err := generic.NewThriftFileProvider("../idl/" + service + ".thrift")
@@ -135,6 +151,15 @@ func main() {
 			cbs := circuitbreak.NewCBSuite(GenServiceCBKeyFunc)
 			opts = append(opts, client.WithCircuitBreaker(cbs))
 		}
+		
+
+		// Tracing
+		// kitexTracer, kitexTracerCloser := InitTracer("kitex-client")
+		// defer kitexTracerCloser.Close()
+		// opts = append(opts, client.WithSuite(kopentracing.NewClientSuite(kitexTracer, func(c context.Context) string {
+		// 	endpoint := rpcinfo.GetRPCInfo(c).From()
+		// 	return endpoint.ServiceName() + "::" + endpoint.Method()
+		// })))
 
 		cli, err := genericclient.NewClient(service, g, opts...)
 		if err != nil {
@@ -143,7 +168,7 @@ func main() {
 
 		fmt.Println("[Hertz] Making RPC Call")
 
-		resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
+		resp, err := RpcCallWithRetry(NUM_OF_RETRIES, cli, c, method, ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -249,4 +274,26 @@ func startRedisSubscription() {
 
 		servicesConfig[keys[0]] = result[keys[0]]
 	}
+func RpcCallWithRetry(retriesLeft int, cli genericclient.Client, c context.Context, method string, ctx *app.RequestContext) (interface{}, error) {
+	resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
+	if err != nil {
+		if retriesLeft <= 1 {
+			return nil, err
+		}
+		fmt.Printf("[Hertz] Retries Left: %v\n", retriesLeft)
+		return RpcCallWithRetry(retriesLeft-1, cli, c, method, ctx)
+	}
+	return resp, nil
+}
+
+// InitTracer Initialize and create tracer
+func InitTracer(serviceName string) (opentracing.Tracer, io.Closer) {
+	cfg, _ := jaegercfg.FromEnv()
+	cfg.ServiceName = serviceName
+	tracer, closer, err := cfg.NewTracer(jaegercfg.Logger(jaeger.StdLogger))
+	if err != nil {
+		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
+	}
+	// opentracing.InitGlobalTracer(tracer)
+	return tracer, closer
 }
