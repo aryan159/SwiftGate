@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -24,9 +25,9 @@ import (
 	"github.com/hertz-contrib/cache"
 	"github.com/hertz-contrib/cache/persist"
 
-	"github.com/hertz-contrib/keyauth"
-
 	"encoding/json"
+
+	"github.com/hertz-contrib/keyauth"
 )
 
 var servicesConfig map[string]map[string]Config
@@ -45,7 +46,8 @@ func main() {
 		Addr:    "127.0.0.1:6379",
 	}))
 
-	ReadConfigFromRedis("bank")
+	LoadAllServices()
+	go startRedisSubscription()
 
 	v1 := h.Group("/:service/:method")
 
@@ -83,7 +85,7 @@ func main() {
 		}),
 		cache.WithOnHitCache(func(c context.Context, ctx *app.RequestContext) {
 			fmt.Println("[Hertz] CACHE HIT")
-			fmt.Println("[Hertz] Retrning Cached Response")
+			fmt.Println("[Hertz] Returning Cached Response")
 		}),
 	))
 
@@ -167,6 +169,27 @@ func GenServiceCBKeyFunc(ri rpcinfo.RPCInfo) string {
 	return circuitbreak.RPCInfo2Key(ri)
 }
 
+func LoadAllServices() {
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	ctx := context.Background()
+	val, err := client.Get(ctx, "allservices").Result()
+	if err != nil {
+		panic(err)
+	}
+
+	for _, element := range strings.Split(val, ";") {
+		if element != "" {
+			ReadConfigFromRedis(element)
+		}
+	}
+
+}
+
 func ReadConfigFromRedis(service string) {
 
 	client := redis.NewClient(&redis.Options{
@@ -191,4 +214,39 @@ func ReadConfigFromRedis(service string) {
 
 	servicesConfig[service] = result[service]
 
+}
+
+func startRedisSubscription() {
+
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	ctx := context.Background()
+
+	pubsub := client.Subscribe(ctx, "services")
+
+	for {
+		msg, err := pubsub.ReceiveMessage(ctx)
+		if err != nil {
+			panic(err)
+		}
+
+		var result map[string]map[string]Config
+
+		json.Unmarshal([]byte(msg.Payload), &result)
+
+		if servicesConfig == nil {
+			servicesConfig = make(map[string]map[string]Config)
+		}
+
+		keys := make([]string, 0, len(result))
+		for k := range result {
+			keys = append(keys, k)
+		}
+
+		servicesConfig[keys[0]] = result[keys[0]]
+	}
 }

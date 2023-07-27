@@ -2,7 +2,7 @@
     "bank": {
         "name" : {
             "cache": {
-                "enableCache" : true,
+                "enableCache" : false,
                 "withHeader" : false,
                 "withBody" : true,
                 "withURI" : true

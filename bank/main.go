@@ -15,6 +15,8 @@ import (
 	"context"
 
 	"github.com/go-redis/redis/v8"
+
+	"strings"
 )
 
 func main() {
@@ -31,7 +33,23 @@ func main() {
 
 	if err == nil {
 		ctx := context.Background()
+
+		val, err := client.Get(ctx, "allservices").Result()
+
+		if !strings.Contains(val, serviceName) {
+			val += serviceName + ";"
+			err = client.Set(ctx, "allservices", val, 0).Err()
+			if err != nil {
+				panic(err)
+			}
+		}
+
 		err = client.Set(ctx, serviceName, config, 0).Err()
+		if err != nil {
+			panic(err)
+		}
+
+		err = client.Publish(ctx, "services", config).Err()
 		if err != nil {
 			panic(err)
 		}
@@ -85,6 +103,16 @@ func RemoveServiceFromRedis(service string) {
 
 	if err != nil {
 		panic(err)
+	}
+
+	val, err := client.Get(ctx, "allservices").Result()
+
+	if strings.Contains(val, service) {
+		val = strings.Replace(val, service+";", "", 1)
+		err = client.Set(ctx, "allservices", val, 0).Err()
+		if err != nil {
+			panic(err)
+		}
 	}
 
 }
