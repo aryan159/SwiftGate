@@ -4,18 +4,20 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
-
 
 	"log"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/circuitbreak"
 	"github.com/cloudwego/kitex/pkg/generic"
+	"github.com/cloudwego/kitex/pkg/retry"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
@@ -151,7 +153,6 @@ func main() {
 			cbs := circuitbreak.NewCBSuite(GenServiceCBKeyFunc)
 			opts = append(opts, client.WithCircuitBreaker(cbs))
 		}
-		
 
 		// Tracing
 		// kitexTracer, kitexTracerCloser := InitTracer("kitex-client")
@@ -274,6 +275,9 @@ func startRedisSubscription() {
 
 		servicesConfig[keys[0]] = result[keys[0]]
 	}
+
+}
+
 func RpcCallWithRetry(retriesLeft int, cli genericclient.Client, c context.Context, method string, ctx *app.RequestContext) (interface{}, error) {
 	resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
 	if err != nil {
