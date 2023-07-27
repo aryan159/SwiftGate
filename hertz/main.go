@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	//"kitex/kitex_gen/api/bankservice"
 
@@ -11,20 +12,19 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/circuitbreak"
 	"github.com/cloudwego/kitex/pkg/generic"
+	"github.com/cloudwego/kitex/pkg/retry"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
 
 	hertztracer "github.com/hertz-contrib/tracer/hertz"
-	etcd "github.com/kitex-contrib/registry-etcd"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
-
-	"time"
 
 	etcd "github.com/kitex-contrib/registry-etcd"
 
@@ -68,7 +68,6 @@ func main() {
 	v1 := h.Group("/:service/:method")
 
 	v1.Use(hertztracer.ServerCtx())
-
 
 	v1.Use(keyauth.New(
 		keyauth.WithFilter(func(c context.Context, ctx *app.RequestContext) bool {
@@ -279,15 +278,15 @@ func InitTracer(serviceName string) (opentracing.Tracer, io.Closer) {
 	}
 	// opentracing.InitGlobalTracer(tracer)
 	return tracer, closer
-
-	func RpcCallWithRetry(retriesLeft int, cli genericclient.Client, c context.Context, method string, ctx *app.RequestContext) (interface{}, error) {
-		resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
-		if err != nil {
-			if retriesLeft <= 1 {
-				return nil, err
-			}
-			fmt.Printf("[Hertz] Retries Left: %v\n", retriesLeft)
-			return RpcCallWithRetry(retriesLeft-1, cli, c, method, ctx)
+}
+func RpcCallWithRetry(retriesLeft int, cli genericclient.Client, c context.Context, method string, ctx *app.RequestContext) (interface{}, error) {
+	resp, err := cli.GenericCall(c, method, string(ctx.Request.BodyBytes()))
+	if err != nil {
+		if retriesLeft <= 1 {
+			return nil, err
 		}
-		return resp, nil
+		fmt.Printf("[Hertz] Retries Left: %v\n", retriesLeft)
+		return RpcCallWithRetry(retriesLeft-1, cli, c, method, ctx)
 	}
+	return resp, nil
+}
