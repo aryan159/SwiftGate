@@ -200,6 +200,9 @@ func LoadAllServices() {
 		panic(err)
 	}
 
+	if val == "" {
+		return
+	}
 	for _, element := range strings.Split(val, ";") {
 		if element != "" {
 			ReadConfigFromRedis(element)
