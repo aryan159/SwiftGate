@@ -27,21 +27,24 @@ import (
 	"github.com/hertz-contrib/obs-opentelemetry/provider"
 	hertztracing "github.com/hertz-contrib/obs-opentelemetry/tracing"
 	kitextracing "github.com/kitex-contrib/obs-opentelemetry/tracing"
-
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
+// Global vairable to store all the current active configs
 var servicesConfig map[string]map[string]Config
 
 func main() {
+
+	//Set up logger
 	hlog.SetLogger(hertzlogrus.NewLogger())
 	hlog.SetLevel(hlog.LevelDebug)
 
 	hlog.Debug("Hertz::main\n")
 
+	//Set up OpenTelemetry
 	p := provider.NewOpenTelemetryProvider(
 		provider.WithServiceName("Hertz-Server"),
 		// Support setting ExportEndpoint via environment variables: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -52,6 +55,7 @@ func main() {
 
 	tracer, cfg := hertztracing.NewServerTracer()
 
+	//Set up Hertz server
 	h := server.New(
 		server.WithHostPorts("127.0.0.1:8887"),
 		server.WithExitWaitTime(time.Second),
@@ -59,27 +63,34 @@ func main() {
 
 	h.Use(hertztracing.ServerMiddleware(cfg))
 
+	//Set up etcd registry
 	r, err := etcd.NewEtcdResolver([]string{"127.0.0.1:2379"})
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	//Setup Redis for caching
 	redisStore := persist.NewRedisStore(redis.NewClient(&redis.Options{
 		Network: "tcp",
 		Addr:    "127.0.0.1:6379",
 	}))
 
+	//Load all the config of the current running services
 	LoadAllServices()
+
+	//Start the listener for the published channels
 	go startRedisSubscription()
 
 	v1 := h.Group("/:service/:method")
 
+	//Setup Keyauth
 	v1.Use(keyauth.New(
 		keyauth.WithFilter(func(c context.Context, ctx *app.RequestContext) bool {
 			return !servicesConfig[string(ctx.Param("service"))][string(ctx.Param("method"))].Auth.EnableAuth
 		}),
 	))
 
+	//Setup Caching
 	v1.Use(cache.NewCache(
 		redisStore,
 		60*time.Second,
@@ -122,6 +133,7 @@ func main() {
 
 		value, _ := ctx.Get("token")
 
+		//Process the auth token
 		if servicesConfig[service][method].Auth.EnableAuth {
 			if value != servicesConfig[service][method].Auth.Token {
 				ctx.SetStatusCode(consts.StatusUnauthorized)
@@ -167,13 +179,12 @@ func main() {
 
 		fmt.Println("[Hertz] Making RPC Call")
 
+		//Retry
 		numOfTries := 1
 		if servicesConfig[service][method].Retry.EnableRetry {
 			numOfTries = servicesConfig[service][method].Retry.MaxTimes
 		}
 
-		// fmt.Printf("[Enable Retry] %v", servicesConfig[service][method].Retry.EnableRetry)
-		// fmt.Printf("[MaxTimes] %v", servicesConfig[service][method].Retry.MaxTimes)
 		resp, err := RpcCallWithRetry(numOfTries, cli, c, method, ctx)
 		if err != nil {
 			fmt.Printf("[RPC Error] %v", err.Error())
@@ -202,7 +213,6 @@ func main() {
 }
 
 func GenServiceCBKeyFunc(ri rpcinfo.RPCInfo) string {
-	// circuitbreak.RPCInfo2Key returns "$fromServiceName/$toServiceName/$method"
 	return circuitbreak.RPCInfo2Key(ri)
 }
 
@@ -298,7 +308,6 @@ func InitTracer(serviceName string) (opentracing.Tracer, io.Closer) {
 	if err != nil {
 		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
 	}
-	// opentracing.InitGlobalTracer(tracer)
 	return tracer, closer
 }
 

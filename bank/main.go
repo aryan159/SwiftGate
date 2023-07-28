@@ -2,16 +2,19 @@ package main
 
 import (
 	api "bank/kitex_gen/api/bank"
+	"context"
 	"fmt"
-
 	"io"
-
+	"io/ioutil"
 	"log"
+	"os"
+	"strings"
 
 	"github.com/cloudwego/kitex/pkg/klog"
 	"github.com/cloudwego/kitex/pkg/limit"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/cloudwego/kitex/server"
+	"github.com/go-redis/redis/v8"
 	"github.com/hertz-contrib/obs-opentelemetry/provider"
 	kitexlogrus "github.com/kitex-contrib/obs-opentelemetry/logging/logrus"
 	"github.com/kitex-contrib/obs-opentelemetry/tracing"
@@ -20,15 +23,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
-
-	"io/ioutil"
-	"os"
-
-	"context"
-
-	"github.com/go-redis/redis/v8"
-
-	"strings"
 )
 
 func main() {
@@ -52,6 +46,7 @@ func main() {
 
 	serviceName := "bank"
 
+	//Set Up Redis to Publish config JSON
 	client := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
@@ -63,6 +58,7 @@ func main() {
 	if err == nil {
 		ctx := context.Background()
 
+		//Update allservices list
 		val, err := client.Get(ctx, "allservices").Result()
 		if err != nil {
 			panic(err)
@@ -81,13 +77,15 @@ func main() {
 			panic(err)
 		}
 
+		//Publish config to channel
 		err = client.Publish(ctx, "services", config).Err()
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	r, err := etcd.NewEtcdRegistry([]string{"127.0.0.1:2379"}) // r should not be reused.
+	//Setup etcd service registry
+	r, err := etcd.NewEtcdRegistry([]string{"127.0.0.1:2379"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -99,8 +97,6 @@ func main() {
 	svr := api.NewServer(new(BankImpl), opts...)
 
 	err = svr.Run()
-
-	RemoveServiceFromRedis(serviceName)
 
 	RemoveServiceFromRedis(serviceName)
 
