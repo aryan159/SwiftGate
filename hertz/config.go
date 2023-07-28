@@ -1,5 +1,6 @@
 package main
 
+// Model for the Config struct
 type Config struct {
 	Cache          Cache          `json:"cache"`
 	Auth           Auth           `json:"auth"`
