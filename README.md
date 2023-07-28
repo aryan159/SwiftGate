@@ -43,8 +43,8 @@ redis-server
 
 ```
 sh scripts/jaeger_run.sh
-sh scripts/hertz_server.sh
-sh scripts/bank_service.sh
+sh scripts/hertz_server_run.sh
+sh scripts/bank_service_run.sh
 ```
 
 Once both servers starts up, you can start sending HTTP GET requests to your localhost at port 8887 with tools such as Postman.
