@@ -39,12 +39,10 @@ redis-server
 ````
 
 
-2. Run these scripts
+2. Run the docker to start all the servers
 
 ```
-sh scripts/jaeger_run.sh
-sh scripts/hertz_server_run.sh
-sh scripts/bank_service_run.sh
+docker-compose up -d
 ```
 
 Once both servers starts up, you can start sending HTTP GET requests to your localhost at port 8887 with tools such as Postman.
