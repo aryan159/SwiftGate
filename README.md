@@ -45,6 +45,16 @@ redis-server
 docker-compose up -d
 ```
 
+navigate the the hertz folder and run the following to start the server.
+```
+go run .
+```
+
+likewise for the kitex server, nagivate to the bank folder and run the command.
+```
+go run .
+```
+
 Once both servers starts up, you can start sending HTTP GET requests to your localhost at port 8887 with tools such as Postman.
 
 ```
