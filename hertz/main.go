@@ -103,6 +103,9 @@ func main() {
 
 			cacheKey := ""
 
+			if servicesConfig[service][method].Auth.EnableAuth {
+				cacheKey += string(c.GetHeader("Authorization"))
+			}
 			if servicesConfig[service][method].Cache.WithURI {
 				cacheKey += c.Request.URI().String()
 			}
