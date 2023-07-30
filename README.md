@@ -72,3 +72,29 @@ Access the bank name service with `http://127.0.0.1:8887/bank/name` with the bod
 Then, you can monitor the generated traces at http://localhost:16686
 
 You can enable the cache, auth etc by editing the json file in the config folder, then restart the bank_service to apply the changes.
+
+Here is an example of the json file: 
+
+
+```
+{
+    "bank": {
+        "name" : {
+            "cache": {
+                "enableCache" : true,
+                "withHeader" : true,
+                "withBody" : true,
+                "withURI" : true
+            },
+            "auth": {
+                "enableAuth" : true,
+                "token" : "token"
+            },
+            "retry": {
+                "enableRetry" : true,
+                "maxTimes": 3
+            }
+        }
+    }
+}
+```
